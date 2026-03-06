@@ -14,7 +14,10 @@ import {
   Clock,
   CheckCircle2,
   BrainCircuit,
-  X
+  X,
+  Edit3,
+  Sparkles,
+  Trash2
 } from 'lucide-react';
 import { User, Quiz, Submission } from '../types';
 import { cn } from '../utils';
@@ -40,11 +43,17 @@ export default function FacultyDashboard({ user, onLogout }: FacultyDashboardPro
   
   // New question state for manual entry
   const [newQuestion, setNewQuestion] = useState({ text: '', options: ['', '', '', ''], correctAnswer: 0 });
+  const [editingQuestionIndex, setEditingQuestionIndex] = useState<number | null>(null);
   const [showQuestionForm, setShowQuestionForm] = useState(false);
   
   // AI States
   const [showAIModal, setShowAIModal] = useState(false);
   const [aiTopic, setAiTopic] = useState('');
+  const [aiQuestionCount, setAiQuestionCount] = useState(5);
+  const [aiDifficulty, setAiDifficulty] = useState('Medium');
+  const [aiDept, setAiDept] = useState('CS');
+  const [aiYear, setAiYear] = useState('1st');
+  const [aiSem, setAiSem] = useState('1st');
   const [generatingAI, setGeneratingAI] = useState(false);
   
   const [showAIAnalyticsModal, setShowAIAnalyticsModal] = useState(false);
@@ -79,9 +88,24 @@ export default function FacultyDashboard({ user, onLogout }: FacultyDashboardPro
 
   const handleAddQuestion = () => {
     if (!newQuestion.text || newQuestion.options.some(o => !o)) return;
-    setNewQuiz({ ...newQuiz, questions: [...newQuiz.questions, newQuestion] });
+    
+    if (editingQuestionIndex !== null) {
+      const updatedQuestions = [...newQuiz.questions];
+      updatedQuestions[editingQuestionIndex] = newQuestion;
+      setNewQuiz({ ...newQuiz, questions: updatedQuestions });
+      setEditingQuestionIndex(null);
+    } else {
+      setNewQuiz({ ...newQuiz, questions: [...newQuiz.questions, newQuestion] });
+    }
+    
     setNewQuestion({ text: '', options: ['', '', '', ''], correctAnswer: 0 });
     setShowQuestionForm(false);
+  };
+
+  const handleEditQuestion = (index: number) => {
+    setNewQuestion(newQuiz.questions[index]);
+    setEditingQuestionIndex(index);
+    setShowQuestionForm(true);
   };
 
   const removeQuestion = (index: number) => {
@@ -108,11 +132,14 @@ export default function FacultyDashboard({ user, onLogout }: FacultyDashboardPro
     if (!aiTopic) return;
     setGeneratingAI(true);
     try {
-      const generated = await aiService.generateQuiz(aiTopic);
+      const generated = await aiService.generateQuiz(aiTopic, aiQuestionCount, aiDifficulty);
       setNewQuiz({
         ...newQuiz,
         title: generated.title,
-        questions: generated.questions
+        questions: generated.questions,
+        dept: aiDept,
+        year: aiYear,
+        sem: aiSem
       });
       setShowAIModal(false);
       setShowCreateModal(true);
@@ -153,6 +180,32 @@ export default function FacultyDashboard({ user, onLogout }: FacultyDashboardPro
       setAiAnalysis("Error generating analysis.");
     } finally {
       setAnalyzingAI(false);
+    }
+  };
+
+  const handleLaunchQuiz = async (e: React.MouseEvent, quizId: string) => {
+    e.stopPropagation();
+    try {
+      await api.launchQuiz(quizId);
+      setQuizzes(prev => prev.map(q => q.id === quizId ? { ...q, status: 'live' } : q));
+      alert("Quiz launched successfully!");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to launch quiz.");
+    }
+  };
+
+  const handleDeleteQuiz = async (e: React.MouseEvent, quizId: string) => {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this quiz? This will also remove all student submissions.")) return;
+    
+    try {
+      await api.deleteQuiz(quizId);
+      setQuizzes(prev => prev.filter(q => q.id !== quizId));
+      alert("Quiz deleted successfully.");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to delete quiz.");
     }
   };
 
@@ -339,6 +392,21 @@ export default function FacultyDashboard({ user, onLogout }: FacultyDashboardPro
                           <div className="text-sm font-black text-emerald-600">{quiz.avgScore ? quiz.avgScore.toFixed(1) : 0}%</div>
                           <div className="text-[10px] uppercase tracking-widest font-bold text-black/40">Avg Score</div>
                         </div>
+                        {quiz.status !== 'live' && (
+                          <button 
+                            onClick={(e) => handleLaunchQuiz(e, quiz.id)}
+                            className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-500 transition-all active:scale-95 shadow-lg shadow-emerald-100"
+                          >
+                            Launch
+                          </button>
+                        )}
+                        <button 
+                          onClick={(e) => handleDeleteQuiz(e, quiz.id)}
+                          className="p-2 text-black/20 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                          title="Delete Quiz"
+                        >
+                          <Trash2 size={20} />
+                        </button>
                         <button className="p-2 text-black/20 hover:text-black transition-colors">
                           <MoreVertical size={20} />
                         </button>
@@ -480,8 +548,30 @@ export default function FacultyDashboard({ user, onLogout }: FacultyDashboardPro
                 <X size={24} />
               </button>
               
-              <h2 className="text-3xl font-black italic mb-2">Create Quiz</h2>
-              <p className="text-black/40 text-sm mb-8 font-medium">Assign a new micro-assessment to your students.</p>
+              <h2 className="text-3xl font-black italic mb-2">Quiz Builder</h2>
+              <p className="text-black/40 text-sm mb-8 font-medium">Design your assessment manually or with AI assistance.</p>
+
+              <div className="flex items-center gap-4 mb-8">
+                <button 
+                  type="button"
+                  onClick={() => setShowAIModal(true)}
+                  className="flex-1 py-3 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-emerald-100 transition-all"
+                >
+                  <Sparkles size={18} /> Generate with AI
+                </button>
+                <div className="w-px h-8 bg-black/5" />
+                <button 
+                  type="button"
+                  onClick={() => {
+                    setNewQuestion({ text: '', options: ['', '', '', ''], correctAnswer: 0 });
+                    setEditingQuestionIndex(null);
+                    setShowQuestionForm(true);
+                  }}
+                  className="flex-1 py-3 bg-black/5 border border-black/5 text-black/60 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-black/10 transition-all"
+                >
+                  <PlusCircle size={18} /> Add Manually
+                </button>
+              </div>
 
               <form onSubmit={handleCreateQuiz} className="space-y-6">
                 <div className="space-y-4">
@@ -535,32 +625,35 @@ export default function FacultyDashboard({ user, onLogout }: FacultyDashboardPro
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] uppercase tracking-widest font-black text-black/40">Questions ({newQuiz.questions.length})</label>
-                    <button 
-                      type="button"
-                      onClick={() => setShowQuestionForm(!showQuestionForm)}
-                      className="text-xs font-bold text-emerald-600 hover:underline"
-                    >
-                      {showQuestionForm ? "Cancel" : "+ Add Question"}
-                    </button>
                   </div>
 
                   {showQuestionForm && (
-                    <div className="p-6 bg-black/5 rounded-2xl space-y-4">
+                    <div className="p-6 bg-black/5 rounded-2xl space-y-4 border border-emerald-600/20 shadow-inner">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-black uppercase tracking-widest text-emerald-600">
+                          {editingQuestionIndex !== null ? "Edit Question" : "New Question"}
+                        </span>
+                        <button type="button" onClick={() => { setShowQuestionForm(false); setEditingQuestionIndex(null); }} className="text-black/20 hover:text-black"><X size={16} /></button>
+                      </div>
                       <input 
                         type="text" 
-                        placeholder="Question text" 
+                        placeholder="Enter your question here..." 
                         value={newQuestion.text}
                         onChange={e => setNewQuestion({ ...newQuestion, text: e.target.value })}
-                        className="w-full px-4 py-3 bg-white rounded-xl font-bold text-sm focus:outline-none"
+                        className="w-full px-4 py-3 bg-white rounded-xl font-bold text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 shadow-sm"
                       />
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {newQuestion.options.map((opt, i) => (
-                          <div key={i} className="flex items-center gap-2">
+                          <div key={i} className={cn(
+                            "flex items-center gap-3 p-3 rounded-xl border transition-all",
+                            newQuestion.correctAnswer === i ? "bg-emerald-50 border-emerald-600/30" : "bg-white border-black/5"
+                          )}>
                             <input 
                               type="radio" 
                               name="correct" 
                               checked={newQuestion.correctAnswer === i}
                               onChange={() => setNewQuestion({ ...newQuestion, correctAnswer: i })}
+                              className="w-4 h-4 accent-emerald-600"
                             />
                             <input 
                               type="text" 
@@ -571,7 +664,7 @@ export default function FacultyDashboard({ user, onLogout }: FacultyDashboardPro
                                 newOpts[i] = e.target.value;
                                 setNewQuestion({ ...newQuestion, options: newOpts });
                               }}
-                              className="w-full px-3 py-2 bg-white rounded-lg text-xs font-medium focus:outline-none"
+                              className="flex-1 bg-transparent text-xs font-bold focus:outline-none"
                             />
                           </div>
                         ))}
@@ -579,29 +672,48 @@ export default function FacultyDashboard({ user, onLogout }: FacultyDashboardPro
                       <button 
                         type="button"
                         onClick={handleAddQuestion}
-                        className="w-full py-2 bg-black text-white rounded-xl text-xs font-bold"
+                        className="w-full py-3 bg-emerald-600 text-white rounded-xl text-sm font-black shadow-lg shadow-emerald-100 hover:bg-emerald-500 transition-all"
                       >
-                        Add to Quiz
+                        {editingQuestionIndex !== null ? "Update Question" : "Add to Quiz"}
                       </button>
                     </div>
                   )}
 
-                  <div className="space-y-2">
+                  <div className="space-y-3">
+                    {newQuiz.questions.length === 0 && !showQuestionForm && (
+                      <div className="py-12 text-center border-2 border-dashed border-black/5 rounded-[32px]">
+                        <p className="text-black/20 font-bold text-sm">No questions added yet.</p>
+                      </div>
+                    )}
                     {newQuiz.questions.map((q, i) => (
-                      <div key={i} className="flex items-center justify-between p-4 bg-black/5 rounded-xl group">
+                      <div key={i} className="flex items-center justify-between p-5 bg-white border border-black/5 rounded-2xl group hover:border-emerald-600/20 transition-all shadow-sm">
                         <div className="flex-1 pr-4">
-                          <div className="text-sm font-bold truncate">{q.text}</div>
-                          <div className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest">
-                            Correct: {q.options[q.correctAnswer]}
+                          <div className="text-sm font-bold mb-1 leading-tight">{q.text}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-emerald-600 font-black uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded">
+                              Correct: {q.options[q.correctAnswer]}
+                            </span>
+                            <span className="text-[10px] text-black/20 font-bold uppercase tracking-widest">
+                              {q.options.length} Options
+                            </span>
                           </div>
                         </div>
-                        <button 
-                          type="button"
-                          onClick={() => removeQuestion(i)}
-                          className="p-2 text-black/20 hover:text-red-500 transition-colors"
-                        >
-                          <X size={16} />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button 
+                            type="button"
+                            onClick={() => handleEditQuestion(i)}
+                            className="p-2 text-black/20 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                          >
+                            <Edit3 size={16} />
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={() => removeQuestion(i)}
+                            className="p-2 text-black/20 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -646,14 +758,86 @@ export default function FacultyDashboard({ user, onLogout }: FacultyDashboardPro
               <h2 className="text-3xl font-black italic mb-2">AI Quiz Builder</h2>
               <p className="text-black/40 text-sm mb-8 font-medium">Enter a topic and let AI generate a quiz for you.</p>
 
-              <div className="space-y-4">
-                <input 
-                  type="text" 
-                  placeholder="Topic (e.g. React Hooks, Photosynthesis)" 
-                  value={aiTopic}
-                  onChange={e => setAiTopic(e.target.value)}
-                  className="w-full px-6 py-4 bg-black/5 rounded-2xl font-bold text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 transition-all"
-                />
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase tracking-widest font-black text-black/40">Topic</label>
+                  <input 
+                    type="text" 
+                    placeholder="Topic (e.g. React Hooks, Photosynthesis)" 
+                    value={aiTopic}
+                    onChange={e => setAiTopic(e.target.value)}
+                    className="w-full px-6 py-4 bg-black/5 rounded-2xl font-bold text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 transition-all"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase tracking-widest font-black text-black/40">No. of Questions</label>
+                    <input 
+                      type="number" 
+                      min="1"
+                      max="20"
+                      value={isNaN(aiQuestionCount) ? '' : aiQuestionCount}
+                      onChange={e => {
+                        const val = parseInt(e.target.value);
+                        setAiQuestionCount(isNaN(val) ? 0 : val);
+                      }}
+                      className="w-full px-6 py-4 bg-black/5 rounded-2xl font-bold text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] uppercase tracking-widest font-black text-black/40">Difficulty</label>
+                    <select 
+                      value={aiDifficulty}
+                      onChange={e => setAiDifficulty(e.target.value)}
+                      className="w-full px-6 py-4 bg-black/5 rounded-2xl font-bold text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 transition-all"
+                    >
+                      <option value="Easy">Easy</option>
+                      <option value="Medium">Medium</option>
+                      <option value="Hard">Hard</option>
+                      <option value="Expert">Expert</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase tracking-widest font-black text-black/40">Target Audience</label>
+                  <div className="grid grid-cols-3 gap-3">
+                    <select 
+                      value={aiDept}
+                      onChange={e => setAiDept(e.target.value)}
+                      className="px-4 py-4 bg-black/5 rounded-2xl font-bold text-xs focus:outline-none focus:ring-2 focus:ring-emerald-600 transition-all"
+                    >
+                      <option value="CS">CS</option>
+                      <option value="IT">IT</option>
+                      <option value="ECE">ECE</option>
+                    </select>
+                    <select 
+                      value={aiYear}
+                      onChange={e => setAiYear(e.target.value)}
+                      className="px-4 py-4 bg-black/5 rounded-2xl font-bold text-xs focus:outline-none focus:ring-2 focus:ring-emerald-600 transition-all"
+                    >
+                      <option value="1st">1st Yr</option>
+                      <option value="2nd">2nd Yr</option>
+                      <option value="3rd">3rd Yr</option>
+                      <option value="4th">4th Yr</option>
+                    </select>
+                    <select 
+                      value={aiSem}
+                      onChange={e => setAiSem(e.target.value)}
+                      className="px-4 py-4 bg-black/5 rounded-2xl font-bold text-xs focus:outline-none focus:ring-2 focus:ring-emerald-600 transition-all"
+                    >
+                      <option value="1st">1st Sem</option>
+                      <option value="2nd">2nd Sem</option>
+                      <option value="3rd">3rd Sem</option>
+                      <option value="4th">4th Sem</option>
+                      <option value="5th">5th Sem</option>
+                      <option value="6th">6th Sem</option>
+                      <option value="7th">7th Sem</option>
+                      <option value="8th">8th Sem</option>
+                    </select>
+                  </div>
+                </div>
                 
                 <button 
                   onClick={handleAIGenerate}

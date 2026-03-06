@@ -3,10 +3,10 @@ import { GoogleGenAI, Type } from "@google/genai";
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
 export const aiService = {
-  generateQuiz: async (topic: string) => {
+  generateQuiz: async (topic: string, count: number = 5, difficulty: string = 'Medium') => {
     const model = genAI.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Generate a 5-question quiz about "${topic}". Return it in JSON format.`,
+      contents: `Generate a ${count}-question quiz about "${topic}" with a ${difficulty} difficulty level. Return it in JSON format.`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {

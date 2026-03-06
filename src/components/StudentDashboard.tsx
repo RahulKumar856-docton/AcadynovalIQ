@@ -46,6 +46,7 @@ export default function StudentDashboard({ user, onLogout }: StudentDashboardPro
   
   // Quiz Taking States
   const [activeQuiz, setActiveQuiz] = useState<Quiz | null>(null);
+  const [incomingQuiz, setIncomingQuiz] = useState<Quiz | null>(null);
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<number[]>([]);
   const [quizStartTime, setQuizStartTime] = useState<number | null>(null);
@@ -54,15 +55,38 @@ export default function StudentDashboard({ user, onLogout }: StudentDashboardPro
   useEffect(() => {
     fetchData();
 
-    socket.on("quiz:created", (newQuiz) => {
+    socket.on("quiz:launched", (newQuiz) => {
       // Check if quiz matches student's criteria
       if (newQuiz.dept === user.dept && newQuiz.year === user.year && newQuiz.sem === user.sem) {
-        setQuizzes(prev => [newQuiz, ...prev]);
+        setQuizzes(prev => {
+          const exists = prev.find(q => q.id === newQuiz.id);
+          if (exists) {
+            return prev.map(q => q.id === newQuiz.id ? newQuiz : q);
+          }
+          return [newQuiz, ...prev];
+        });
+        
+        // Show notification if not already taking a quiz
+        if (!activeQuiz) {
+          setIncomingQuiz(newQuiz);
+        }
+      }
+    });
+
+    socket.on("quiz:deleted", (quizId) => {
+      setQuizzes(prev => prev.filter(q => q.id !== quizId));
+      if (activeQuiz?.id === quizId) {
+        setActiveQuiz(null);
+        alert("This quiz has been removed by the faculty.");
+      }
+      if (incomingQuiz?.id === quizId) {
+        setIncomingQuiz(null);
       }
     });
 
     return () => {
-      socket.off("quiz:created");
+      socket.off("quiz:launched");
+      socket.off("quiz:deleted");
     };
   }, []);
 
@@ -498,6 +522,54 @@ export default function StudentDashboard({ user, onLogout }: StudentDashboardPro
                   </button>
                 </div>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Incoming Quiz Alert Modal */}
+      <AnimatePresence>
+        {incomingQuiz && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8, y: 40 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.8, y: 40 }}
+              className="relative w-full max-w-md bg-white rounded-[40px] p-10 shadow-2xl text-center"
+            >
+              <div className="w-20 h-20 bg-emerald-100 rounded-3xl flex items-center justify-center text-emerald-600 mx-auto mb-8 animate-bounce">
+                <Zap size={40} fill="currentColor" />
+              </div>
+              
+              <h2 className="text-3xl font-black italic mb-4">Live Quiz Launched!</h2>
+              <p className="text-black/60 font-medium mb-8 leading-relaxed">
+                Your faculty has just launched <span className="text-black font-bold">"{incomingQuiz.title}"</span>. 
+                Attend it now to participate in the real-time assessment.
+              </p>
+
+              <div className="space-y-3">
+                <button 
+                  onClick={() => {
+                    handleTakeQuiz(incomingQuiz);
+                    setIncomingQuiz(null);
+                  }}
+                  className="w-full py-5 bg-emerald-600 text-white font-black rounded-2xl hover:bg-emerald-500 transition-all active:scale-95 shadow-xl shadow-emerald-100 flex items-center justify-center gap-3"
+                >
+                  Attend Quiz Now <ChevronRight size={20} />
+                </button>
+                <button 
+                  onClick={() => setIncomingQuiz(null)}
+                  className="w-full py-4 text-black/40 font-bold text-sm hover:text-black transition-colors"
+                >
+                  Maybe Later
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

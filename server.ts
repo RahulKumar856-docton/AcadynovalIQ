@@ -39,6 +39,7 @@ db.exec(`
     year TEXT,
     sem TEXT,
     questions TEXT, -- JSON string
+    status TEXT DEFAULT 'draft',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (faculty_id) REFERENCES users(id)
   );
@@ -55,6 +56,12 @@ db.exec(`
     FOREIGN KEY (student_id) REFERENCES users(id)
   );
 `);
+
+try {
+  db.exec("ALTER TABLE quizzes ADD COLUMN status TEXT DEFAULT 'draft'");
+} catch (e) {
+  // Column already exists
+}
 
 async function startServer() {
   const app = express();
@@ -138,12 +145,49 @@ async function startServer() {
     if (req.user.role !== 'faculty') return res.sendStatus(403);
     const { title, dept, year, sem, questions } = req.body;
     const result = db.prepare(
-      "INSERT INTO quizzes (title, faculty_id, dept, year, sem, questions) VALUES (?, ?, ?, ?, ?, ?)"
-    ).run(title, req.user.id, dept, year, sem, JSON.stringify(questions || []));
+      "INSERT INTO quizzes (title, faculty_id, dept, year, sem, questions, status) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(title, req.user.id, dept, year, sem, JSON.stringify(questions || []), 'live');
     
-    const newQuiz = { id: result.lastInsertRowid, title, dept, year, sem, questions, submissions: 0, avgScore: 0 };
-    io.emit("quiz:created", newQuiz);
+    const newQuiz = { id: result.lastInsertRowid, title, dept, year, sem, questions, submissions: 0, avgScore: 0, status: 'live' };
+    io.emit("quiz:launched", newQuiz);
     res.json(newQuiz);
+  });
+
+  app.post("/api/quizzes/:id/launch", authenticateToken, (req: any, res) => {
+    if (req.user.role !== 'faculty') return res.sendStatus(403);
+    const quizId = req.params.id;
+    db.prepare("UPDATE quizzes SET status = 'live' WHERE id = ? AND faculty_id = ?").run(quizId, req.user.id);
+    
+    const quiz: any = db.prepare("SELECT * FROM quizzes WHERE id = ?").get(quizId);
+    if (quiz) {
+      const quizWithQuestions = {
+        ...quiz,
+        questions: JSON.parse(quiz.questions),
+        submissions: 0,
+        avgScore: 0,
+        status: 'live'
+      };
+      io.emit("quiz:launched", quizWithQuestions);
+      res.json(quizWithQuestions);
+    } else {
+      res.sendStatus(404);
+    }
+  });
+
+  app.delete("/api/quizzes/:id", authenticateToken, (req: any, res) => {
+    if (req.user.role !== 'faculty') return res.sendStatus(403);
+    const quizId = req.params.id;
+    
+    // Delete submissions first due to foreign key constraints
+    db.prepare("DELETE FROM submissions WHERE quiz_id = ?").run(quizId);
+    const result = db.prepare("DELETE FROM quizzes WHERE id = ? AND faculty_id = ?").run(quizId, req.user.id);
+    
+    if (result.changes > 0) {
+      io.emit("quiz:deleted", quizId);
+      res.json({ success: true });
+    } else {
+      res.sendStatus(404);
+    }
   });
 
   app.post("/api/quizzes/:id/submit", authenticateToken, (req: any, res) => {

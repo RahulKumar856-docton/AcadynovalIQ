@@ -34,6 +34,8 @@ export const api = {
     fetchWithAuth(`/api/quizzes/${id}/submit`, { method: "POST", body: JSON.stringify({ score, timeTaken, accuracy }) }),
   getStudentStats: () => fetchWithAuth("/api/stats/student"),
   getQuizSubmissions: (id: string) => fetchWithAuth(`/api/quizzes/${id}/submissions`),
+  launchQuiz: (id: string) => fetchWithAuth(`/api/quizzes/${id}/launch`, { method: "POST" }),
+  deleteQuiz: (id: string) => fetchWithAuth(`/api/quizzes/${id}`, { method: "DELETE" }),
 };
 
 export { socket };

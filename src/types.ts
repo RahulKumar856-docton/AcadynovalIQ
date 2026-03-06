@@ -29,6 +29,7 @@ export interface Quiz {
   createdAt: string;
   myScore?: number;
   questions?: Question[];
+  status?: 'draft' | 'live' | 'ended';
 }
 
 export interface Submission {
